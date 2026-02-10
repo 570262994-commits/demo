@@ -1,61 +1,91 @@
 {
   "indicators": {
     "销售额": {
-      "formula": "(单价 * 数量)",
+      "formula": "SUM(COALESCE(unitPrice * quantity, 0)) / 100",
       "fields": ["unitPrice", "quantity"],
       "level": "L0",
-      "synonyms": ["营收", "销售金额", "sales_amount", "turnover"],
-      "note": "基于订单的销售额，不考虑回款情况",
-      "calculation": "SUM(COALESCE(unitPrice * quantity, 0))"
+      "synonyms": ["营收", "销售金额", "sales_amount", "turnover", "流水", "业绩"],
+      "unit": "元",
+      "description": "基于订单的销售额，将分转换为元单位展示",
+      "calculation": "聚合计算，自动处理NULL值",
+      "performance": "直接查询orders表，利用ownerId索引"
     },
     "毛利": {
-      "formula": "(单价 - 成本) * 数量",
+      "formula": "SUM(COALESCE((unitPrice - costPrice) * quantity, 0)) / 100",
       "fields": ["unitPrice", "costPrice", "quantity"],
       "level": "L1",
-      "synonyms": ["利润", "盈利", "margin", "profit"],
-      "note": "基于订单的毛利，不考虑回款情况",
-      "calculation": "SUM(COALESCE((unitPrice - costPrice) * quantity, 0))"
+      "synonyms": ["利润", "盈利", "margin", "profit", "毛收益"],
+      "unit": "元",
+      "description": "基于订单的毛利，扣除成本后的收益，将分转换为元",
+      "calculation": "聚合计算，自动处理NULL值",
+      "performance": "直接查询orders表，利用ownerId索引",
+      "note": "L1字段，仅Admin可访问"
     },
-    "欠款": {
-      "formula": "SUM(COALESCE(amount, 0)) WHERE type = 'DEBT'",
+    "实时欠款": {
+      "formula": "(SUM(COALESCE(CASE WHEN type='DEBT' THEN amount ELSE 0 END, 0)) - SUM(COALESCE(CASE WHEN type='REPAY' THEN amount ELSE 0 END, 0))) / 100",
       "fields": ["amount", "type"],
       "level": "L1",
-      "synonyms": ["应收账款", "应收", "debt", "receivable"],
-      "note": "客户欠公司的总金额",
-      "calculation": "COALESCE(SUM(CASE WHEN type = 'DEBT' THEN amount ELSE 0 END), 0)"
+      "synonyms": ["应收账款", "欠款余额", "应收", "debt", "receivable", "未回款"],
+      "unit": "元",
+      "description": "客户当前的欠款总额，已还款已扣除，将分转换为元",
+      "calculation": "跨表关联计算，自动处理NULL值",
+      "performance": "关联customers和finances表，利用ownerId索引",
+      "note": "L1字段，仅Admin可访问，需实时计算"
     },
-    "还款": {
-      "formula": "SUM(COALESCE(amount, 0)) WHERE type = 'REPAY'",
+    "订单数": {
+      "formula": "COUNT(DISTINCT id)",
+      "fields": ["id"],
+      "level": "L0",
+      "synonyms": ["订单数量", "单量", "order_count", "transaction_count"],
+      "unit": "个",
+      "description": "订单的总数量",
+      "calculation": "计数查询，自动处理NULL值",
+      "performance": "直接查询orders表，利用ownerId索引"
+    },
+    "客单价": {
+      "formula": "SUM(COALESCE(unitPrice * quantity, 0)) / (NULLIF(COUNT(DISTINCT customerId), 0)) / 100",
+      "fields": ["unitPrice", "quantity", "customerId"],
+      "level": "L0",
+      "synonyms": ["平均订单金额", "average_order_value", "AOV"],
+      "unit": "元",
+      "description": "每个客户的平均订单金额，将分转换为元",
+      "calculation": "除法计算，处理除零错误",
+      "performance": "聚合orders表，关联customers表"
+    },
+    "回款率": {
+      "formula": "(SUM(COALESCE(CASE WHEN type='REPAY' THEN amount ELSE 0 END, 0)) / NULLIF(SUM(COALESCE(CASE WHEN type='DEBT' THEN amount ELSE 0 END, 0)), 0)) * 100",
       "fields": ["amount", "type"],
       "level": "L1",
-      "synonyms": ["回款", "收款", "payment", "repayment"],
-      "note": "客户归还的总金额",
-      "calculation": "COALESCE(SUM(CASE WHEN type = 'REPAY' THEN amount ELSE 0 END), 0)"
-    },
-    "净欠款": {
-      "formula": "欠款 - 还款",
-      "fields": ["欠款", "还款"],
-      "level": "L1",
-      "synonyms": ["净应收", "实际欠款", "net_debt"],
-      "note": "客户最终欠款金额",
-      "calculation": "COALESCE(SUM(CASE WHEN type = 'DEBT' THEN amount ELSE 0 END), 0) - COALESCE(SUM(CASE WHEN type = 'REPAY' THEN amount ELSE 0 END), 0)"
+      "synonyms": ["还款率", "collection_rate", "payment_ratio"],
+      "unit": "%",
+      "description": "客户回款占欠款的比例，以百分比展示",
+      "calculation": "除法计算，处理除零错误，结果*100",
+      "performance": "关联finances表，计算还款比例",
+      "note": "L1字段，仅Admin可访问"
     }
   },
   "dimensions": {
     "时间": {
       "field": "createdAt",
+      "table": "orders",
       "formats": {
         "今天": "date('now')",
         "昨天": "date('now', '-1 day')",
         "本周": "date('now', 'weekday 0', '-7 days')",
         "本月": "date('now', 'start of month')",
         "上月": "date('now', 'start of month', '-1 month')",
+        "近7天": "date('now', '-7 days')",
         "近30天": "date('now', '-30 days')",
-        "近90天": "date('now', '-90 days')"
-      }
+        "近90天": "date('now', '-90 days')",
+        "本季度": "date('now', 'start of quarter')",
+        "本年度": "date('now', 'start of year')"
+      },
+      "synonyms": ["时间", "日期", "day", "date", "time"],
+      "description": "用于时间维度过滤，支持多种时间范围表达"
     },
     "区域": {
       "field": "region",
+      "table": "customers",
       "values": ["全国", "华东", "华北", "华南", "华中", "西南", "西北"],
       "mappings": {
         "华东区": "华东",
@@ -63,14 +93,104 @@
         "华南区": "华南",
         "华中区": "华中",
         "西南区": "西南",
-        "西北区": "西北"
-      }
+        "西北区": "西北",
+        "东部": "华东",
+        "北部": "华北",
+        "南部": "华南",
+        "中部": "华中",
+        "西部": ["西南", "西北"]
+      },
+      "synonyms": ["区域", "大区", "省份", "region", "area", "province"],
+      "description": "客户所在区域，支持多级映射"
+    },
+    "客户名称": {
+      "field": "name",
+      "table": "customers",
+      "mappings": {
+        "公司": "name",
+        "客户": "name",
+        "抬头": "name",
+        "客户名称": "name",
+        "企业名称": "name"
+      },
+      "synonyms": ["公司", "客户", "抬头", "客户名称", "企业名称", "customer_name"],
+      "description": "客户的公司名称，支持多种称呼"
+    },
+    "产品": {
+      "field": "productName",
+      "table": "orders",
+      "synonyms": ["产品", "商品", "货物", "product", "item", "goods"],
+      "description": "订购的产品名称"
+    },
+    "状态": {
+      "field": "type",
+      "table": "finances",
+      "values": ["DEBT", "REPAY"],
+      "mappings": {
+        "欠款": "DEBT",
+        "还款": "REPAY",
+        "应收": "DEBT",
+        "实收": "REPAY",
+        "债务": "DEBT",
+        "支付": "REPAY"
+      },
+      "synonyms": ["类型", "状态", "transaction_type", "payment_type"],
+      "description": "财务交易类型"
     }
   },
   "rules": {
-    "null_handling": "所有计算必须使用 COALESCE(field, 0) 确保返回数字",
-    "time_constraint": "所有查询必须包含时间维度约束",
-    "security": "非 Admin 用户无法访问 L1 字段",
-    "row_filter": "所有查询自动添加 owner_id 过滤条件"
-  }
+    "null_handling": {
+      "requirement": "所有聚合查询必须使用COALESCE处理NULL值",
+      "examples": [
+        "SUM(COALESCE(field, 0))",
+        "COUNT(COALESCE(field, 0))",
+        "AVG(COALESCE(field, 0))"
+      ],
+      "warning": "不允许直接使用NULL值进行计算"
+    },
+    "unit_conversion": {
+      "requirement": "所有金额相关指标必须将分转换为元",
+      "formula": "金额（分） / 100",
+      "note": "数据库中金额以分为单位存储，显示时转换为元"
+    },
+    "security": {
+      "access_control": "L0字段所有用户可访问，L1字段仅Admin可访问",
+      "row_filter": "所有查询自动添加owner_id过滤条件",
+      "injection_prevention": "禁止用户直接操作owner_id字段"
+    },
+    "performance": {
+      "index_strategy": "主要字段已建立索引：ownerId, createdAt, region",
+      "join_optimization": "跨表查询优先使用ownerId进行关联",
+      "cache_policy": "语义字典缓存，查询结果缓存5分钟"
+    }
+  },
+  "cross_table_queries": {
+    "实时欠款计算": {
+      "query": "SELECT c.name, SUM(COALESCE(CASE WHEN f.type='DEBT' THEN f.amount ELSE 0 END, 0)) / 100 as debt_amount, SUM(COALESCE(CASE WHEN f.type='REPAY' THEN f.amount ELSE 0 END, 0)) / 100 as repay_amount, (SUM(COALESCE(CASE WHEN f.type='DEBT' THEN f.amount ELSE 0 END, 0)) - SUM(COALESCE(CASE WHEN f.type='REPAY' THEN f.amount ELSE 0 END, 0))) / 100 as net_debt FROM customers c LEFT JOIN finances f ON c.id = f.customerId WHERE c.ownerId = ? GROUP BY c.id",
+      "performance_tips": [
+        "使用LEFT JOIN确保没有财务记录的客户也包含在结果中",
+        "在ownerId上建立索引加速关联查询",
+        "使用CASE WHEN精确控制不同类型的计算"
+      ]
+    },
+    "区域业绩分析": {
+      "query": "SELECT c.region, SUM(COALESCE(o.unitPrice * o.quantity, 0)) / 100 as revenue, SUM(COALESCE((o.unitPrice - o.costPrice) * o.quantity, 0)) / 100 as profit, COUNT(o.id) as order_count FROM customers c JOIN orders o ON c.id = o.customerId WHERE c.ownerId = ? AND c.region = ? GROUP BY c.region",
+      "performance_tips": [
+        "在region和ownerId上建立复合索引",
+        "先过滤再关联，减少处理的数据量",
+        "使用COALESCE确保NULL值不影响计算"
+      ]
+    },
+    "客户排名": {
+      "query": "SELECT c.name, SUM(COALESCE(o.unitPrice * o.quantity, 0)) / 100 as total_revenue, COUNT(o.id) as order_count FROM customers c JOIN orders o ON c.id = o.customerId WHERE c.ownerId = ? GROUP BY c.id ORDER BY total_revenue DESC",
+      "performance_tips": [
+        "使用JOIN而非子查询提高性能",
+        "在ORDER BY字段上建立索引",
+        "限制结果集大小避免大数据量排序"
+      ]
+    }
+  },
+  "version": "1.0.0",
+  "last_updated": "2024-01-20",
+  "description": "AC-Insight智能经营分析工作台的语义字典，定义了所有业务指标的计算规则和维度映射"
 }
