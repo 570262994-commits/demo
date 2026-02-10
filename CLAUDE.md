@@ -453,3 +453,7 @@ export class SemanticValidator {
     - `docs(文档类型): 描述文档更新` (例如：docs(prd): 更新毛利计算口径)
     - `fix(问题点): 描述修复内容`
 - **执行推送**：在我确认“OK”或“提交”后，自动执行 `git add .`、`git commit` 和 `git push`。
+
+## 自定义指令集 (Custom Commands)
+- `/resume`: 自动执行项目状态初始化，读取 roadmap、PRD 及业务字典，汇报当前进度。
+- `/sync`: 触发 GitHub 同步逻辑（即我们之前配置的智能提醒提交）。
