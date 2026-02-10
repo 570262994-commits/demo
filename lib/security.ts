@@ -596,6 +596,34 @@ export class SecurityInterceptor {
   }
 }
 
+// 安全重写 SQL，注入 owner_id 条件
+export function rewriteSQLWithOwnerID(sql: string, userId: string): string {
+  // 检查是否已经包含 owner_id 条件
+  if (sql.includes(`owner_id = '${userId}'`) || sql.includes(`owner_id = \"${userId}\"`)) {
+    return sql; // 已经包含 owner_id，无需重写
+  }
+
+  let rewrittenSQL = sql;
+
+  // 情况 1：SQL 包含 WHERE 子句
+  if (sql.includes('WHERE')) {
+    // 确保多个 WHERE 子句不会重复
+    rewrittenSQL = sql.replace(/WHERE\s+/, `WHERE owner_id = '${userId}' AND `);
+  }
+  // 情况 2：SQL 包含 GROUP BY 或 ORDER BY 但没有 WHERE
+  else if (sql.includes('GROUP BY') || sql.includes('ORDER BY')) {
+    // 在 GROUP BY 或 ORDER BY 之前插入 WHERE
+    rewrittenSQL = sql.replace(/(GROUP BY|ORDER BY)/, `WHERE owner_id = '${userId}' $1`);
+  }
+  // 情况 3：SQL 只有 SELECT 和 FROM
+  else {
+    // 在 FROM 之后添加 WHERE
+    rewrittenSQL = sql.replace(/FROM\s+([^\s]+)\s*/, `FROM $1 WHERE owner_id = '${userId}' `);
+  }
+
+  return rewrittenSQL;
+}
+
 // 快速权限检查函数
 export function quickPermissionCheck(userRole: UserRole, queryIntent: string): {
   canProceed: boolean;
