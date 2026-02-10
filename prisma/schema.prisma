@@ -1,0 +1,109 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 定义财务类型枚举
+enum TransactionType {
+  DEBT    // 欠款
+  REPAY   // 还款
+}
+
+// 客户表
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String   // 负责人ID，用于行级权限控制
+  region    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联关系
+  orders    Order[]
+  finances  Finance[]
+
+  @@map("customers")
+
+  // 索引优化
+  @@index([ownerId])
+  @@index([region])
+}
+
+// 订单表
+model Order {
+  id           String   @id @default(cuid())
+  customerId   String
+  productName  String
+  quantity     Int
+  unitPrice    Int   // 以分为单位，避免浮点数精度问题
+  costPrice    Int   // 以分为单位，避免浮点数精度问题
+  ownerId      String   // 负责人ID，用于行级权限控制
+  orderDate    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // 关联关系
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  finances     Finance[]
+
+  @@map("orders")
+
+  // 索引优化
+  @@index([ownerId])
+  @@index([customerId])
+  @@index([orderDate])
+}
+
+// 财务往来表
+model Finance {
+  id        String        @id @default(cuid())
+  customerId String
+  amount    Int   // 以分为为单位，确保计算精度
+  type      TransactionType
+  ownerId   String        // 负责人ID，用于行级权限控制
+  date      DateTime
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  // 关联关系
+  customer  Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("finances")
+
+  // 索引优化
+  @@index([ownerId])
+  @@index([customerId])
+  @@index([date])
+  @@index([type])
+}
+
+// 计算字段的视图（可用于数据库层面的计算）
+// 注意：实际计算逻辑在应用层实现
+view OrderSummary {
+  orderId       String
+  customerName  String
+  productName   String
+  totalRevenue  Int   // 以分为单位的总收入
+  totalCost     Int   // 以分为单位的总成本
+  profit        Int   // 以分为单位的利润
+  profitMargin  Float   // 百分比形式的利润率
+
+  // 这个视图需要在数据库迁移时手动创建
+  // SQL 示例：
+  -- CREATE VIEW order_summary AS
+  -- SELECT o.id as orderId, c.name as customerName,
+  --        o.productName,
+  --        (o.quantity * o.unitPrice / 100) as totalRevenue,
+  --        (o.quantity * o.costPrice / 100) as totalCost,
+  --        (o.quantity * o.unitPrice - o.quantity * o.costPrice) / 100 as profit,
+  --        ((o.quantity * o.unitPrice - o.quantity * o.costPrice) / o.quantity * o.unitPrice) * 100 as profitMargin
+  -- FROM orders o
+  -- JOIN customers c ON o.customerId = c.id;
+}
