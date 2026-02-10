@@ -1,0 +1,76 @@
+{
+  "indicators": {
+    "销售额": {
+      "formula": "(单价 * 数量)",
+      "fields": ["unitPrice", "quantity"],
+      "level": "L0",
+      "synonyms": ["营收", "销售金额", "sales_amount", "turnover"],
+      "note": "基于订单的销售额，不考虑回款情况",
+      "calculation": "SUM(COALESCE(unitPrice * quantity, 0))"
+    },
+    "毛利": {
+      "formula": "(单价 - 成本) * 数量",
+      "fields": ["unitPrice", "costPrice", "quantity"],
+      "level": "L1",
+      "synonyms": ["利润", "盈利", "margin", "profit"],
+      "note": "基于订单的毛利，不考虑回款情况",
+      "calculation": "SUM(COALESCE((unitPrice - costPrice) * quantity, 0))"
+    },
+    "欠款": {
+      "formula": "SUM(COALESCE(amount, 0)) WHERE type = 'DEBT'",
+      "fields": ["amount", "type"],
+      "level": "L1",
+      "synonyms": ["应收账款", "应收", "debt", "receivable"],
+      "note": "客户欠公司的总金额",
+      "calculation": "COALESCE(SUM(CASE WHEN type = 'DEBT' THEN amount ELSE 0 END), 0)"
+    },
+    "还款": {
+      "formula": "SUM(COALESCE(amount, 0)) WHERE type = 'REPAY'",
+      "fields": ["amount", "type"],
+      "level": "L1",
+      "synonyms": ["回款", "收款", "payment", "repayment"],
+      "note": "客户归还的总金额",
+      "calculation": "COALESCE(SUM(CASE WHEN type = 'REPAY' THEN amount ELSE 0 END), 0)"
+    },
+    "净欠款": {
+      "formula": "欠款 - 还款",
+      "fields": ["欠款", "还款"],
+      "level": "L1",
+      "synonyms": ["净应收", "实际欠款", "net_debt"],
+      "note": "客户最终欠款金额",
+      "calculation": "COALESCE(SUM(CASE WHEN type = 'DEBT' THEN amount ELSE 0 END), 0) - COALESCE(SUM(CASE WHEN type = 'REPAY' THEN amount ELSE 0 END), 0)"
+    }
+  },
+  "dimensions": {
+    "时间": {
+      "field": "createdAt",
+      "formats": {
+        "今天": "date('now')",
+        "昨天": "date('now', '-1 day')",
+        "本周": "date('now', 'weekday 0', '-7 days')",
+        "本月": "date('now', 'start of month')",
+        "上月": "date('now', 'start of month', '-1 month')",
+        "近30天": "date('now', '-30 days')",
+        "近90天": "date('now', '-90 days')"
+      }
+    },
+    "区域": {
+      "field": "region",
+      "values": ["全国", "华东", "华北", "华南", "华中", "西南", "西北"],
+      "mappings": {
+        "华东区": "华东",
+        "华北区": "华北",
+        "华南区": "华南",
+        "华中区": "华中",
+        "西南区": "西南",
+        "西北区": "西北"
+      }
+    }
+  },
+  "rules": {
+    "null_handling": "所有计算必须使用 COALESCE(field, 0) 确保返回数字",
+    "time_constraint": "所有查询必须包含时间维度约束",
+    "security": "非 Admin 用户无法访问 L1 字段",
+    "row_filter": "所有查询自动添加 owner_id 过滤条件"
+  }
+}

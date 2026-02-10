@@ -10,11 +10,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 定义财务类型枚举
-enum TransactionType {
-  DEBT    // 欠款
-  REPAY   // 还款
-}
+// 定义财务类型（SQLite 不支持 enum，使用 String）
+// type TransactionType = "DEBT" | "REPAY"
 
 // 客户表
 model Customer {
@@ -51,7 +48,7 @@ model Order {
 
   // 关联关系
   customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  finances     Finance[]
+  // finances     Finance[]  // SQLite 不支持自引用关系
 
   @@map("orders")
 
@@ -66,7 +63,7 @@ model Finance {
   id        String        @id @default(cuid())
   customerId String
   amount    Int   // 以分为为单位，确保计算精度
-  type      TransactionType
+  type      String
   ownerId   String        // 负责人ID，用于行级权限控制
   date      DateTime
   createdAt DateTime      @default(now())
@@ -84,26 +81,3 @@ model Finance {
   @@index([type])
 }
 
-// 计算字段的视图（可用于数据库层面的计算）
-// 注意：实际计算逻辑在应用层实现
-view OrderSummary {
-  orderId       String
-  customerName  String
-  productName   String
-  totalRevenue  Int   // 以分为单位的总收入
-  totalCost     Int   // 以分为单位的总成本
-  profit        Int   // 以分为单位的利润
-  profitMargin  Float   // 百分比形式的利润率
-
-  // 这个视图需要在数据库迁移时手动创建
-  // SQL 示例：
-  -- CREATE VIEW order_summary AS
-  -- SELECT o.id as orderId, c.name as customerName,
-  --        o.productName,
-  --        (o.quantity * o.unitPrice / 100) as totalRevenue,
-  --        (o.quantity * o.costPrice / 100) as totalCost,
-  --        (o.quantity * o.unitPrice - o.quantity * o.costPrice) / 100 as profit,
-  --        ((o.quantity * o.unitPrice - o.quantity * o.costPrice) / o.quantity * o.unitPrice) * 100 as profitMargin
-  -- FROM orders o
-  -- JOIN customers c ON o.customerId = c.id;
-}
